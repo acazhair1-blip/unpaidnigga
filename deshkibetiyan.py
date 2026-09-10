@@ -1,7 +1,7 @@
 import sys
 import asyncio
 
-# Fix asyncio event loop issue for Pyrogram on Linux/Render
+# Fix asyncio event loop for Linux/Render
 try:
     asyncio.get_event_loop()
 except RuntimeError:
@@ -25,7 +25,7 @@ from pyrogram.types import (
 from pyrogram.errors import UserNotParticipant, FloodWait
 
 # ==========================================
-# 🌐 KEEP-ALIVE WEB SERVER (PORT BINDING)
+# 🌐 KEEP-ALIVE WEB SERVER FOR RENDER
 # ==========================================
 web = Flask(__name__)
 
@@ -49,7 +49,11 @@ API_HASH = "b409c31c0c25b927dca36fcc0d05c149"
 BOT_TOKEN = "8602387086:AAGiV9tLsCpuFXxq1YFxZtRPZr6CbFihBh0"
 
 FORCE_SUB_CHANNEL = -1004460480150
+# 👈 YAHAN APNA 'REQUEST APPROVAL' WALA LINK PASTE KARO
 CHANNEL_LINK = "https://t.me/+TsUwg9LKW2wzNDE1"
+
+# ⏱️ Auto Delete Timer (Kitne seconds baad video delete ho? 300 sec = 5 minutes)
+AUTO_DELETE_TIME = 300 
 
 SITE_URL = "https://sundarikanya.ink"
 HEADERS = {
@@ -69,6 +73,28 @@ app = Client(
 GLOBAL_CATS = {}
 USER_VIDS = {}
 FILE_CACHE = {}
+
+# Background Auto-Delete Task
+async def auto_delete_msg(chat_id, message_id, delay):
+    await asyncio.sleep(delay)
+    try:
+        await app.delete_messages(chat_id=chat_id, message_ids=message_id)
+    except Exception as e:
+        print(f"Auto Delete Error: {e}")
+
+# ==========================================
+# 🔮 AUTO-ACCEPT CHANNEL JOIN REQUESTS
+# ==========================================
+@app.on_chat_join_request(filters.chat(FORCE_SUB_CHANNEL))
+async def auto_approve_join_request(client, message):
+    try:
+        await client.approve_chat_join_request(message.chat.id, message.from_user.id)
+        await client.send_message(
+            message.from_user.id,
+            "✅ **Aapki Join Request Accept ho gayi hai!**\n\nAb aap Bot me `/start` karke videos dekh sakte hain."
+        )
+    except Exception as e:
+        print(f"Auto Approve Error: {e}")
 
 # ==========================================
 # 🛡️ CLEANING & FILTERS
@@ -107,8 +133,7 @@ async def is_subscribed(client, user_id):
         return False
     except UserNotParticipant:
         return False
-    except Exception as e:
-        print(f"Force Join Check Note: {e}")
+    except Exception:
         return False
 
 # ==========================================
@@ -193,11 +218,11 @@ async def start_handler(client, message):
     user_id = message.from_user.id
     if not await is_subscribed(client, user_id):
         btn = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📢 Join Private Channel", url=CHANNEL_LINK)],
+            [InlineKeyboardButton("📢 Request To Join Channel", url=CHANNEL_LINK)],
             [InlineKeyboardButton("✅ Verify & Start", callback_data="verify_now")]
         ])
         await message.reply(
-            "🔒 **ACCESS DENIED!**\n\nIs bot ka content dekhne ke liye hamara Private Channel join karna zaroori hai.",
+            "🔒 **ACCESS DENIED!**\n\nIs bot ka content dekhne ke liye hamara Channel Join / Request karna zaroori hai.",
             reply_markup=btn
         )
         return
@@ -278,7 +303,7 @@ async def callback_handler(client, query):
             except: pass
             await start_handler(client, query.message)
         else:
-            await query.answer("❌ Pehle Join Karein!", show_alert=True)
+            await query.answer("❌ Pehle Channel Request / Join Karein!", show_alert=True)
         return
 
     if data == "close":
@@ -301,43 +326,72 @@ async def callback_handler(client, query):
         status = await query.message.reply("⏳ **Processing Media...**")
         media = extract_media(vid['url'])
 
+        # 1. PHOTOS (Protect Content + Auto Delete)
         if media['images']:
             try:
-                if len(media['images']) == 1:
-                    await client.send_photo(query.message.chat.id, media['images'][0], caption=f"🖼 {vid['title']}")
-                else:
-                    group = [InputMediaPhoto(p) for p in media['images']]
-                    await client.send_media_group(query.message.chat.id, group)
+                sent_m = await client.send_photo(
+                    query.message.chat.id, 
+                    media['images'][0], 
+                    caption=f"🖼 {vid['title']}\n\n⚠️ _This photo will auto-delete in 5 minutes!_",
+                    protect_content=True # 🛑 FORWARDING & SAVING OFF
+                )
+                asyncio.create_task(auto_delete_msg(query.message.chat.id, sent_m.id, AUTO_DELETE_TIME))
             except: pass
 
+        # 2. VIDEOS (Protect Content + Auto Delete)
         if media['videos']:
             total = len(media['videos'])
             for i, mp4 in enumerate(media['videos'][:3]):
                 caption = f"🎬 **{vid['title']}**"
                 if total > 1: caption += f" (Part {i+1}/{min(total, 3)})"
+                caption += f"\n\n⏳ _Auto-deleting in 5 minutes to prevent copyright!_"
 
+                sent_v = None
                 if mp4 in FILE_CACHE:
                     try:
-                        await client.send_video(query.message.chat.id, FILE_CACHE[mp4], caption=caption, supports_streaming=True)
-                        continue
+                        sent_v = await client.send_video(
+                            query.message.chat.id, 
+                            FILE_CACHE[mp4], 
+                            caption=caption, 
+                            supports_streaming=True,
+                            protect_content=True # 🛑 FORWARDING & SAVING OFF
+                        )
                     except: pass
 
-                try:
-                    sent = await client.send_video(query.message.chat.id, mp4, caption=caption, supports_streaming=True)
-                    if sent.video: FILE_CACHE[mp4] = sent.video.file_id
-                except Exception:
-                    temp = f"temp_{user_id}_{i}.mp4"
+                if not sent_v:
                     try:
-                        await status.edit_text("⏬ **Large file downloading...**")
-                        download_file(mp4, temp)
-                        await status.edit_text("⬆️ **Uploading to Telegram...**")
-                        sent = await client.send_video(query.message.chat.id, temp, caption=caption, supports_streaming=True)
-                        if sent.video: FILE_CACHE[mp4] = sent.video.file_id
+                        sent_v = await client.send_video(
+                            query.message.chat.id, 
+                            mp4, 
+                            caption=caption, 
+                            supports_streaming=True,
+                            protect_content=True # 🛑 FORWARDING & SAVING OFF
+                        )
+                        if sent_v.video: FILE_CACHE[mp4] = sent_v.video.file_id
                     except Exception:
-                        btn = InlineKeyboardMarkup([[InlineKeyboardButton("▶️ Open HD Player", url=mp4)]])
-                        await client.send_message(query.message.chat.id, f"{caption}\n\n⚡ Stream online:", reply_markup=btn)
-                    finally:
-                        if os.path.exists(temp): os.remove(temp)
+                        temp = f"temp_{user_id}_{i}.mp4"
+                        try:
+                            await status.edit_text("⏬ **Large file downloading...**")
+                            download_file(mp4, temp)
+                            await status.edit_text("⬆️ **Uploading to Telegram...**")
+                            sent_v = await client.send_video(
+                                query.message.chat.id, 
+                                temp, 
+                                caption=caption, 
+                                supports_streaming=True,
+                                protect_content=True # 🛑 FORWARDING & SAVING OFF
+                            )
+                            if sent_v.video: FILE_CACHE[mp4] = sent_v.video.file_id
+                        except Exception:
+                            btn = InlineKeyboardMarkup([[InlineKeyboardButton("▶️ Open HD Player", url=mp4)]])
+                            await client.send_message(query.message.chat.id, f"{caption}\n\n⚡ Stream online:", reply_markup=btn)
+                        finally:
+                            if os.path.exists(temp): os.remove(temp)
+
+                # Schedule Auto Delete for Video
+                if sent_v:
+                    asyncio.create_task(auto_delete_msg(query.message.chat.id, sent_v.id, AUTO_DELETE_TIME))
+
         else:
             if not media['images']:
                 await client.send_message(query.message.chat.id, "⚠️ Stream currently unavailable.")
@@ -345,13 +399,7 @@ async def callback_handler(client, query):
         try: await status.delete()
         except: pass
 
-# ==========================================
-# 🚀 SERVER START (RENDER READY)
-# ==========================================
 if __name__ == "__main__":
-    print("Starting Keep-Alive Web Server...")
     keep_alive()
-    print("Fetching Categories...")
     fetch_cats()
-    print("🚀 BOT IS LIVE AND RUNNING 24/7!")
     app.run()
