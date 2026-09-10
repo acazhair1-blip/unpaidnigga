@@ -1,6 +1,5 @@
 import os
 import re
-import time
 import requests
 import logging
 from threading import Thread
@@ -12,19 +11,18 @@ from pyrogram.types import (
     ReplyKeyboardMarkup, KeyboardButton,
     InputMediaPhoto
 )
-from pyrogram.errors import UserNotParticipant, FloodWait
+from pyrogram.errors import UserNotParticipant
 
 # ==========================================
-# 🌐 WEB SERVER FOR RENDER (DYNAMIC PORT FIX)
+# 🌐 WEB SERVER FOR RENDER (PORT BINDING)
 # ==========================================
 web = Flask(__name__)
 
 @web.route('/')
 def home():
-    return "Bot is Running 24/7!"
+    return "Bot is Live 24/7!"
 
 def run_web():
-    # Render dynamic PORT deta hai, use fetch kar rahe hain
     port = int(os.environ.get("PORT", 8080))
     web.run(host="0.0.0.0", port=port)
 
@@ -47,9 +45,8 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 }
 
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(level=logging.INFO)
 
-# in_memory=True se Render par session file lock hokar crash nahi hoga
 app = Client(
     "VIPPrivateVault",
     api_id=API_ID,
@@ -62,14 +59,10 @@ GLOBAL_CATS = {}
 USER_VIDS = {}
 FILE_CACHE = {}
 
-# ==========================================
-# 🛡️ CLEANING & FILTERS
-# ==========================================
 def clean_branding(text):
     if not text: return ""
     text = re.sub(r'(?i)sundari\s*kanya|sundarikanya\.ink', '', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
+    return re.sub(r'\s+', ' ', text).strip()
 
 def is_junk_image(url):
     u = (url or "").lower()
@@ -86,9 +79,6 @@ def get_emoji(name):
     if 'desi' in n: return "🇮🇳 "
     return "📁 "
 
-# ==========================================
-# 🔒 FORCE JOIN CHECKER
-# ==========================================
 async def is_subscribed(client, user_id):
     try:
         member = await client.get_chat_member(FORCE_SUB_CHANNEL, user_id)
@@ -103,9 +93,6 @@ async def is_subscribed(client, user_id):
         print(f"Force Join Check Note: {e}")
         return False
 
-# ==========================================
-# 🔍 SCRAPERS
-# ==========================================
 def fetch_cats():
     try:
         r = requests.get(SITE_URL, headers=HEADERS, timeout=12)
@@ -177,9 +164,6 @@ def download_file(url, file_path):
                 if chunk: f.write(chunk)
     return file_path
 
-# ==========================================
-# 🤖 BOT HANDLERS
-# ==========================================
 @app.on_message(filters.command("start"))
 async def start_handler(client, message):
     user_id = message.from_user.id
@@ -337,13 +321,7 @@ async def callback_handler(client, query):
         try: await status.delete()
         except: pass
 
-# ==========================================
-# 🚀 SERVER START (RENDER READY)
-# ==========================================
 if __name__ == "__main__":
-    print("Starting Keep-Alive Web Server...")
     keep_alive()
-    print("Fetching Categories...")
     fetch_cats()
-    print("🚀 BOT IS LIVE AND RUNNING 24/7!")
     app.run()
