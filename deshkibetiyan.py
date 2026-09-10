@@ -1,5 +1,16 @@
+import sys
+import asyncio
+
+# Fix asyncio event loop issue for Pyrogram on Linux/Render
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
 import os
 import re
+import time
 import requests
 import logging
 from threading import Thread
@@ -11,10 +22,10 @@ from pyrogram.types import (
     ReplyKeyboardMarkup, KeyboardButton,
     InputMediaPhoto
 )
-from pyrogram.errors import UserNotParticipant
+from pyrogram.errors import UserNotParticipant, FloodWait
 
 # ==========================================
-# 🌐 WEB SERVER FOR RENDER (PORT BINDING)
+# 🌐 KEEP-ALIVE WEB SERVER (PORT BINDING)
 # ==========================================
 web = Flask(__name__)
 
@@ -45,7 +56,7 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 }
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.ERROR)
 
 app = Client(
     "VIPPrivateVault",
@@ -59,10 +70,14 @@ GLOBAL_CATS = {}
 USER_VIDS = {}
 FILE_CACHE = {}
 
+# ==========================================
+# 🛡️ CLEANING & FILTERS
+# ==========================================
 def clean_branding(text):
     if not text: return ""
     text = re.sub(r'(?i)sundari\s*kanya|sundarikanya\.ink', '', text)
-    return re.sub(r'\s+', ' ', text).strip()
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
 
 def is_junk_image(url):
     u = (url or "").lower()
@@ -79,6 +94,9 @@ def get_emoji(name):
     if 'desi' in n: return "🇮🇳 "
     return "📁 "
 
+# ==========================================
+# 🔒 FORCE JOIN CHECKER
+# ==========================================
 async def is_subscribed(client, user_id):
     try:
         member = await client.get_chat_member(FORCE_SUB_CHANNEL, user_id)
@@ -93,6 +111,9 @@ async def is_subscribed(client, user_id):
         print(f"Force Join Check Note: {e}")
         return False
 
+# ==========================================
+# 🔍 SCRAPERS
+# ==========================================
 def fetch_cats():
     try:
         r = requests.get(SITE_URL, headers=HEADERS, timeout=12)
@@ -164,6 +185,9 @@ def download_file(url, file_path):
                 if chunk: f.write(chunk)
     return file_path
 
+# ==========================================
+# 🤖 BOT HANDLERS
+# ==========================================
 @app.on_message(filters.command("start"))
 async def start_handler(client, message):
     user_id = message.from_user.id
@@ -321,7 +345,13 @@ async def callback_handler(client, query):
         try: await status.delete()
         except: pass
 
+# ==========================================
+# 🚀 SERVER START (RENDER READY)
+# ==========================================
 if __name__ == "__main__":
+    print("Starting Keep-Alive Web Server...")
     keep_alive()
+    print("Fetching Categories...")
     fetch_cats()
+    print("🚀 BOT IS LIVE AND RUNNING 24/7!")
     app.run()
