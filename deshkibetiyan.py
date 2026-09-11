@@ -1,13 +1,5 @@
 import sys
 import asyncio
-
-# Fix asyncio event loop for Linux/Render/Railway (Python 3.11+)
-try:
-    asyncio.get_event_loop()
-except RuntimeError:
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
 import os
 import re
 import time
@@ -67,7 +59,7 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 }
 
-# 🔒 HARDCODED BACKUP CATEGORIES (Never empty guarantee)
+# 🔒 HARDCODED BACKUP CATEGORIES
 PERMANENT_CATS = {
     "💃 Village Bhabhi": f"{SITE_URL}/village-bhabhi/",
     "📸 Snapchat": f"{SITE_URL}/snapchat/",
@@ -99,10 +91,10 @@ GLOBAL_CATS = dict(PERMANENT_CATS)
 USER_VIDS, FILE_CACHE = {}, {}
 
 # ==========================================
-# 💸 GPLINKS SHORTENER & MASKING ENGINE
+# 💸 GPLINKS SHORTENER ENGINE
 # ==========================================
 def get_monetized_link(original_url):
-    """Original URL ko GPLinks API se Shorten karta hai (Domain Hide + Direct Earning)"""
+    """Original URL ko GPLinks API se Shorten karta hai"""
     if SHORTENER_API_KEY and SHORTENER_API_KEY.strip() != "":
         try:
             api_req = f"{SHORTENER_API_URL}?api={SHORTENER_API_KEY}&url={original_url}"
@@ -487,4 +479,5 @@ async def main():
     await app.stop()
 
 if __name__ == "__main__":
-    loop.run_until_complete(main()) 
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
