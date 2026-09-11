@@ -1,36 +1,37 @@
 import sys
 import asyncio
+
+# Fix asyncio event loop for Linux/Render/Railway (Python 3.11+)
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
 import os
 import re
 import time
 import requests
 import logging
 from threading import Thread
-
-# 1. FORCE EVENT LOOP CREATION FOR PYTHON 3.11+ (RAILWAY FIX)
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-
-from bs4 import BeautifulSoup
 from flask import Flask
-from pyrogram import Client, enums, filters, idle
-from pyrogram.errors import UserNotParticipant
+from bs4 import BeautifulSoup
+from pyrogram import Client, filters, enums, idle
 from pyrogram.types import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    InputMediaPhoto,
-    KeyboardButton,
-    ReplyKeyboardMarkup,
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    ReplyKeyboardMarkup, KeyboardButton,
+    InputMediaPhoto
 )
+from pyrogram.errors import UserNotParticipant
 
 # ==========================================
-# 🌐 KEEP-ALIVE FLASK SERVER FOR RAILWAY
+# 🌐 KEEP-ALIVE WEB SERVER FOR 24/7 UPTIME
 # ==========================================
 web = Flask(__name__)
 
-@web.route("/")
+@web.route('/')
 def home():
-    return "Bot is Live 24/7 on Railway!"
+    return "VIP Vault Monetized Engine Running 24/7!"
 
 def run_web():
     port = int(os.environ.get("PORT", 8080))
@@ -41,24 +42,32 @@ def keep_alive():
     t.start()
 
 # ==========================================
-# ⚙️ CONFIGURATION
+# ⚙️ CONFIGURATION & API KEYS
 # ==========================================
 API_ID = 35025088
 API_HASH = "b409c31c0c25b927dca36fcc0d05c149"
 BOT_TOKEN = "8602387086:AAGiV9tLsCpuFXxq1YFxZtRPZr6CbFihBh0"
 
+# 💸 YOUR GPLINKS API KEY
+SHORTENER_API_KEY = "d20ab33cc205d659ddcb2daa08b020f8db2cb2af"
+SHORTENER_API_URL = "https://gplinks.in/api"
+
+# 📢 DUAL CHANNELS FORCE SUB
 CHANNELS = [
     {"id": -1004460480150, "link": "https://t.me/+TsUwg9LKW2wzNDE1"},
-    {"id": -1004442592541, "link": "https://t.me/+NdBuwwTcRQo2NDU1"},
+    {"id": -1004442592541, "link": "https://t.me/+NdBuwwTcRQo2NDU1"}
 ]
 
-AUTO_DELETE_TIME = 300  # 5 Minutes
+# ⏱️ CONFIGS
+AUTO_DELETE_TIME = 300  # 5 Minutes Auto-Delete
+MAX_NATIVE_DOWNLOAD_MB = 100  # 100MB tak direct TG Player me, usse badi par Shortened Link
+
 SITE_URL = "https://sundarikanya.ink"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 }
 
-# 🔒 14 HARDCODED DEFAULT CATEGORIES (KABHI GAYAB NAHI HONGI)
+# 🔒 HARDCODED BACKUP CATEGORIES (Never empty guarantee)
 PERMANENT_CATS = {
     "💃 Village Bhabhi": f"{SITE_URL}/village-bhabhi/",
     "📸 Snapchat": f"{SITE_URL}/snapchat/",
@@ -83,14 +92,39 @@ app = Client(
     api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN,
-    in_memory=True,
+    in_memory=True
 )
 
 GLOBAL_CATS = dict(PERMANENT_CATS)
 USER_VIDS, FILE_CACHE = {}, {}
 
 # ==========================================
-# 🛡️ UTILS & FORCE JOIN
+# 💸 GPLINKS SHORTENER & MASKING ENGINE
+# ==========================================
+def get_monetized_link(original_url):
+    """Original URL ko GPLinks API se Shorten karta hai (Domain Hide + Direct Earning)"""
+    if SHORTENER_API_KEY and SHORTENER_API_KEY.strip() != "":
+        try:
+            api_req = f"{SHORTENER_API_URL}?api={SHORTENER_API_KEY}&url={original_url}"
+            r = requests.get(api_req, timeout=8)
+            res = r.json()
+            if res.get("status") == "success" or "shortenedUrl" in res:
+                return res.get("shortenedUrl") or res.get("shortened_url") or original_url
+        except Exception as e:
+            print(f"GPLinks API Error: {e}")
+    return original_url
+
+def get_file_size_mb(url):
+    """Video size check karne ke liye"""
+    try:
+        r = requests.head(url, headers=HEADERS, allow_redirects=True, timeout=5)
+        size = int(r.headers.get('Content-Length', 0))
+        return size / (1024 * 1024)
+    except:
+        return 0
+
+# ==========================================
+# 🛡️ UTILS & AUTO-DELETE
 # ==========================================
 async def auto_delete_msg(chat_id, message_id):
     await asyncio.sleep(AUTO_DELETE_TIME)
@@ -100,8 +134,7 @@ async def auto_delete_msg(chat_id, message_id):
         pass
 
 def clean_branding(text):
-    if not text:
-        return ""
+    if not text: return ""
     text = re.sub(r"(?i)sundari\s*kanya|sundarikanya\.ink", "", text)
     return re.sub(r"\s+", " ", text).strip() or "Premium File"
 
@@ -202,13 +235,20 @@ def extract_media(post_url):
     except Exception:
         return media
 
+def download_file(url, file_path):
+    with requests.get(url, headers=HEADERS, stream=True, timeout=90) as r:
+        r.raise_for_status()
+        with open(file_path, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=1024*1024):
+                if chunk: f.write(chunk)
+    return file_path
+
 # ==========================================
-# 📱 UI BUILDER (NEVER EMPTY GUARANTEE)
+# 📱 UI BUILDERS
 # ==========================================
 def build_bottom_keyboard():
     rows = []
     row = []
-    # Guaranteed fallback check
     cats_to_show = GLOBAL_CATS if len(GLOBAL_CATS) > 0 else PERMANENT_CATS
     cats_keys = list(cats_to_show.keys())[:16]
     
@@ -224,7 +264,7 @@ def build_bottom_keyboard():
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
 # ==========================================
-# 🤖 HANDLERS
+# 🤖 BOT HANDLERS
 # ==========================================
 @app.on_message(filters.command("start"))
 async def start_handler(client, message):
@@ -233,9 +273,7 @@ async def start_handler(client, message):
             [InlineKeyboardButton(f"📢 Join Channel {i+1}", url=c["link"])]
             for i, c in enumerate(CHANNELS)
         ]
-        kb.append(
-            [InlineKeyboardButton("✅ Verify & Start", callback_data="verify")]
-        )
+        kb.append([InlineKeyboardButton("✅ Verify & Start", callback_data="verify")])
         return await message.reply(
             "🔒 **ACCESS DENIED!**\n\nContent unlock karne ke liye dono channels join karein.",
             reply_markup=InlineKeyboardMarkup(kb),
@@ -262,7 +300,6 @@ async def menu_handler(client, message):
     if text == "🔍 Search":
         return await message.reply("🔍 Type `/search keyword`\nExample: `/search bhabhi`")
 
-    # Determine category URL
     cats_dict = GLOBAL_CATS if len(GLOBAL_CATS) > 0 else PERMANENT_CATS
     
     if text in cats_dict:
@@ -289,19 +326,15 @@ async def cb_handler(client, query):
 
     if data == "verify":
         if await is_joined(client, user_id):
-            try:
-                await query.message.delete()
-            except Exception:
-                pass
+            try: await query.message.delete()
+            except Exception: pass
             await start_handler(client, query.message)
         else:
             await query.answer("❌ Join Dono Channels Pehle!", show_alert=True)
 
     elif data == "close":
-        try:
-            await query.message.delete()
-        except Exception:
-            pass
+        try: await query.message.delete()
+        except Exception: pass
 
     elif data.startswith("play_"):
         if not await is_joined(client, user_id):
@@ -322,30 +355,26 @@ async def cb_handler(client, query):
         # Preview Photos
         if media["images"]:
             try:
-                if len(media["images"]) == 1:
-                    sent_p = await client.send_photo(
-                        query.message.chat.id,
-                        media["images"][0],
-                        caption=f"🖼 **{vid['title']}**\n\n⏳ _Auto-deleting in 5 mins!_",
-                        protect_content=True
-                    )
-                    asyncio.create_task(auto_delete_msg(query.message.chat.id, sent_p.id))
-                else:
-                    group = [InputMediaPhoto(p) for p in media["images"]]
-                    await client.send_media_group(query.message.chat.id, group)
-            except Exception:
-                pass
+                sent_p = await client.send_photo(
+                    query.message.chat.id,
+                    media["images"][0],
+                    caption=f"🖼 **{vid['title']}**\n\n⏳ _Auto-deleting in 5 mins!_",
+                    protect_content=True
+                )
+                asyncio.create_task(auto_delete_msg(query.message.chat.id, sent_p.id))
+            except Exception: pass
 
-        # Videos Streaming
+        # Videos Hybrid Monetized Engine
         if media["videos"]:
             total = len(media["videos"])
             for i, mp4 in enumerate(media["videos"][:3]):
                 caption = f"🎬 **{vid['title']}**"
-                if total > 1:
-                    caption += f" (Part {i+1}/{min(total,3)})"
+                if total > 1: caption += f" (Part {i+1}/{min(total,3)})"
                 caption += "\n\n⏳ _Auto-deleting in 5 mins to prevent copyright!_"
 
                 sent_vid = None
+                
+                # Check Cache First (Instant Play)
                 if mp4 in FILE_CACHE:
                     try:
                         sent_vid = await client.send_video(
@@ -355,25 +384,53 @@ async def cb_handler(client, query):
                             supports_streaming=True,
                             protect_content=True
                         )
-                    except Exception:
-                        pass
+                    except Exception: pass
 
+                # If Not Cached, Check Size Strategy
                 if not sent_vid:
-                    try:
-                        sent_vid = await client.send_video(
+                    file_size_mb = get_file_size_mb(mp4)
+                    
+                    # STRATEGY A: Small/Medium Files (<100MB) -> Direct Telegram Native Play
+                    if 0 < file_size_mb <= MAX_NATIVE_DOWNLOAD_MB:
+                        try:
+                            sent_vid = await client.send_video(
+                                query.message.chat.id,
+                                mp4,
+                                caption=caption,
+                                supports_streaming=True,
+                                protect_content=True
+                            )
+                            if sent_vid.video: FILE_CACHE[mp4] = sent_vid.video.file_id
+                        except Exception:
+                            # Auto-Download if TG URL Upload Fails
+                            temp = f"temp_{user_id}_{i}.mp4"
+                            try:
+                                await status.edit_text("⏬ **Processing High-Speed Stream...**")
+                                download_file(mp4, temp)
+                                sent_vid = await client.send_video(
+                                    query.message.chat.id,
+                                    temp,
+                                    caption=caption,
+                                    supports_streaming=True,
+                                    protect_content=True
+                                )
+                                if sent_vid.video: FILE_CACHE[mp4] = sent_vid.video.file_id
+                            except Exception: pass
+                            finally:
+                                if os.path.exists(temp): os.remove(temp)
+
+                    # STRATEGY B: Large Files (>100MB) -> GPLinks Shortened Monetized Link
+                    if not sent_vid:
+                        gplink_url = get_monetized_link(mp4)
+                        player_btn = InlineKeyboardMarkup([
+                            [InlineKeyboardButton("▶️ Watch Full HD Video [1080p]", url=gplink_url)],
+                            [InlineKeyboardButton("⚡ Fast Server 2 [No Lag]", url=gplink_url)]
+                        ])
+                        await client.send_message(
                             query.message.chat.id,
-                            mp4,
-                            caption=caption,
-                            supports_streaming=True,
-                            protect_content=True
+                            f"🔥 **{vid['title']}**\n\n📦 *Exclusive High-Length HD File*\nClick below to stream instantly:",
+                            reply_markup=player_btn
                         )
-                        if sent_vid.video:
-                            FILE_CACHE[mp4] = sent_vid.video.file_id
-                    except Exception:
-                        btn = InlineKeyboardMarkup(
-                            [[InlineKeyboardButton("▶️ Open HD Player", url=mp4)]]
-                        )
-                        await client.send_message(query.message.chat.id, f"{caption}\n\n⚡ Stream online:", reply_markup=btn)
 
                 if sent_vid:
                     asyncio.create_task(auto_delete_msg(query.message.chat.id, sent_vid.id))
@@ -381,10 +438,8 @@ async def cb_handler(client, query):
             if not media["images"]:
                 await client.send_message(query.message.chat.id, "⚠️ Stream currently unavailable.")
 
-        try:
-            await status.delete()
-        except Exception:
-            pass
+        try: await status.delete()
+        except Exception: pass
 
 @app.on_message(filters.command("search"))
 async def search_cmd(client, message):
@@ -413,10 +468,8 @@ async def search_cmd(client, message):
 
 @app.on_chat_join_request()
 async def auto_approve(client, m):
-    try:
-        await client.approve_chat_join_request(m.chat.id, m.from_user.id)
-    except Exception:
-        pass
+    try: await client.approve_chat_join_request(m.chat.id, m.from_user.id)
+    except Exception: pass
 
 # ==========================================
 # 🚀 MAIN ASYNC RUNNER
@@ -429,7 +482,7 @@ async def main():
     print(f"Categories Loaded: {len(GLOBAL_CATS)}")
     print("Starting Pyrogram Client...")
     await app.start()
-    print("🚀 BOT IS LIVE AND RUNNING ON RAILWAY 24/7!")
+    print("🚀 FULLY MONETIZED BOT IS LIVE ON RAILWAY 24/7!")
     await idle()
     await app.stop()
 
